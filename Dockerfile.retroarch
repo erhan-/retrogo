@@ -43,8 +43,8 @@ WORKDIR /build/retroarch
 RUN git clone --depth 1 https://github.com/libretro/RetroArch.git .
 
 # gl2.c patch: don't bind FBO 0 (keeps our FBO bound for all rendering incl. menu)
-COPY gl2_mali.patch /build/gl2_mali.patch
-RUN patch -p0 < /build/gl2_mali.patch
+COPY retroarch-gl2-fbo.patch /build/retroarch-gl2-fbo.patch
+RUN patch -p0 < /build/retroarch-gl2-fbo.patch
 
 # Replace Mali context driver with FBO rotation version (correct UV mapping)
 COPY mali_fbdev_ctx.c /build/retroarch/gfx/drivers_context/mali_fbdev_ctx.c
