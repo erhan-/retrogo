@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build toolchain image
+        run: docker build -t primego-toolchain .
+      - name: Save image
+        run: docker save primego-toolchain -o /tmp/toolchain.tar
+      - name: Cache toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-image
+          path: /tmp/toolchain.tar
+
+  build-retroarch:
+    needs: build-toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build RetroArch
+        run: docker build -t retrogo-builder -f Dockerfile.retroarch .
+      - name: Extract binary
+        run: docker run --rm -v "$(pwd):/output" retrogo-builder cp /retroarch /output/
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retroarch-armhf
+          path: retroarch
+
+  build-midigamepad:
+    needs: build-toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Load toolchain
+        uses: actions/download-artifact@v4
+        with:
+          name: toolchain-image
+          path: /tmp
+      - name: Import image
+        run: docker load -i /tmp/toolchain.tar
+      - name: Build MIDI bridge
+        run: |
+          docker run --rm -v "$(pwd):/work" primego-toolchain sh -c '
+            arm-linux-gnueabihf-gcc -O2 -static -o /work/midigamepad /work/midigamepad.c -lpthread && \
+            arm-linux-gnueabihf-strip /work/midigamepad
+          '
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: midigamepad-armhf
+          path: midigamepad

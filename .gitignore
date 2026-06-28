@@ -1,0 +1,25 @@
+# Compiled binaries
+retroarch
+midigamepad
+evtest
+gles_poc
+*.so
+
+# ROMs
+*.zip
+*.sfc
+*.smc
+*.gb
+*.gbc
+*.gba
+*.cue
+*.bin
+*.iso
+
+# Docker artifacts
+primego-toolchain.tar
+retrogo-builder.tar
+
+# Temp
+*.log
+*.b64

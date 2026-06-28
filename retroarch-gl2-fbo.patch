@@ -1,0 +1,18 @@
+--- gfx/drivers/gl2.c
++++ gfx/drivers/gl2.c
+@@ -463,11 +463,15 @@ static void gl2_set_viewport(gl2_t *gl,
+ #ifdef IOS
+ /* There is no default frame buffer on iOS. */
+ void glkitview_bind_fbo(void);
+ #define gl2_renderchain_bind_backbuffer() glkitview_bind_fbo()
+ #else
+-#define gl2_renderchain_bind_backbuffer() gl2_bind_fb(0)
++#ifdef HAVE_MALI_FBDEV
++#define gl2_renderchain_bind_backbuffer() /* no-op: FBO managed by context driver */
++#else
++#define gl2_renderchain_bind_backbuffer() gl2_bind_fb(0)
++#endif
+ #endif
+ 
+ /**
+  * DISPLAY DRIVER

@@ -1,0 +1,71 @@
+FROM debian:bookworm-slim AS builder
+
+RUN dpkg --add-architecture armhf && \
+    apt-get update && \
+    apt-get install -y \
+        crossbuild-essential-armhf \
+        libasound2-dev:armhf \
+        libegl1-mesa-dev:armhf \
+        libgles2-mesa-dev:armhf \
+        libudev-dev:armhf \
+        zlib1g-dev:armhf \
+        liblzma-dev:armhf \
+        libfreetype-dev:armhf \
+        pkg-config:armhf \
+        git make wget \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/arm-linux-gnueabihf/include/EGL && \
+    echo '#ifndef __eglplatform_h_' > /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#define __eglplatform_h_' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#include <KHR/khrplatform.h>' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#ifndef EGLAPI' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#define EGLAPI KHRONOS_APICALL' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#endif' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#ifndef EGLAPIENTRY' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#define EGLAPIENTRY KHRONOS_APIENTRY' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#define EGLAPIENTRYP EGLAPIENTRY*' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#endif' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* EGLNativeDisplayType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* EGLNativeWindowType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* EGLNativePixmapType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* NativeDisplayType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* NativeWindowType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef void* NativePixmapType;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo 'typedef khronos_int32_t EGLint;' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#define EGL_CAST(type, value) ((type)(value))' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h && \
+    echo '#endif' >> /usr/arm-linux-gnueabihf/include/EGL/eglplatform.h
+
+RUN echo 'struct fbdev_window { unsigned short width; unsigned short height; };' > /usr/arm-linux-gnueabihf/include/EGL/fbdev_window.h
+
+WORKDIR /build/retroarch
+RUN git clone --depth 1 https://github.com/libretro/RetroArch.git .
+
+# gl2.c patch: don't bind FBO 0 (keeps our FBO bound for all rendering incl. menu)
+COPY gl2_mali.patch /build/gl2_mali.patch
+RUN patch -p0 < /build/gl2_mali.patch
+
+# Replace Mali context driver with FBO rotation version (correct UV mapping)
+COPY mali_fbdev_ctx.c /build/retroarch/gfx/drivers_context/mali_fbdev_ctx.c
+
+# Configure for Prime Go
+RUN CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++ ./configure \
+    --host=arm-linux-gnueabihf --enable-mali_fbdev --enable-opengles \
+    --enable-egl --enable-floathard --enable-alsa --enable-udev \
+    --enable-dynamic --enable-threads --enable-zlib --enable-7zip \
+    --enable-cc_resampler --enable-rgui --enable-ozone \
+    --enable-stb_font --enable-stb_image --enable-stb_vorbis \
+    --enable-ibxm --enable-dr_mp3 --enable-chd \
+    --disable-x11 --disable-sdl2 --disable-sdl --disable-ffmpeg \
+    --disable-pulse --disable-oss --disable-jack \
+    --disable-dbus --disable-wayland --disable-kms --disable-opengl \
+    --disable-opengl1 --disable-opengl_core --disable-vulkan --disable-cheevos \
+    2>&1 | tail -5
+
+RUN make -j$(nproc) CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++ 2>&1 | tail -5
+
+RUN arm-linux-gnueabihf-strip retroarch && ls -lh retroarch && file retroarch
+
+FROM debian:bookworm-slim
+COPY --from=builder /build/retroarch/retroarch /retroarch
